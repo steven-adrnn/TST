@@ -1,23 +1,31 @@
-from flask import Flask, jsonify
+import uvicorn
+from fastapi import FastAPI
 
-app = Flask(__name__)
+app = FastAPI()
 
-@app.route('/api/users', methods=['GET'])
+@app.get("/")
+async def root():
+    return {"message": "Hello from FastAPI!"}
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+
+@app.get('/api/users')
 def get_users():
     users = [
         {"id": 1, "name": "John Doe"},
         {"id": 2, "name": "Jane Smith"},
     ]
-    return jsonify(users)
+    return users
 
-@app.route('/api/tools', methods=['GET'])
+@app.get('/api/tools')
 def get_tools():
     tools = [
         {"id": 1, "name": "Cangkul"},
         {"id": 2, "name": "Pupuk"},
         {"id": 3, "name": "Sprayer"},
     ]
-    return jsonify(tools)
+    return tools
 
 if __name__ == '__main__':
     app.run()
