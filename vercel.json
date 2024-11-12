@@ -7,7 +7,9 @@
       }
     ],
     "routes": [
-      { "src": "/api/users", "dest": "/api/main.py" },
-      { "src": "/api/tools", "dest": "/api/main.py" }
+      {
+        "src" : "/(.*)",
+        "dest" : "api/main.py"
+      }
     ]
   }
