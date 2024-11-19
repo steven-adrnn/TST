@@ -51,29 +51,12 @@ async def login(provider: str = "google"):
 # Endpoint Callback OAuth
 @app.get("/auth/callback")
 async def auth_callback(code: str):
-    try:
-        # Proses callback dari provider
-        response = supabase.auth.sign_in_with_oauth({
-            'provider': 'google',
-            'code': code
-        })
-        
-        # Tangani response dengan lebih baik
-        if response.user:
-            return {
-                "user": response.user.dict(),
-                "session": response.session.dict() if response.session else None
-            }
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Autentikasi gagal"
-            )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+    # Proses callback dari provider
+    user = supabase.auth.sign_in_with_oauth({
+        'provider': 'google',
+        'code': code
+    })
+    return {"user": user}
 
 # Endpoint Terproteksi
 @app.get("/protected")
@@ -118,5 +101,5 @@ def get_tools():
     ]
     return tools
 
-# if __name__ == '__main__':
-#     app.run()
+if __name__ == '__main__':
+    app.run()
