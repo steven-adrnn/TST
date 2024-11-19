@@ -13,12 +13,12 @@ import logging
 url: str = os.getenv('SUPABASE_URL')
 key: str = os.getenv('SUPABASE_KEY')
 supabase: Client = create_client(url, key)
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
 
-# Log environment variables untuk debugging
-logger.info(f"Supabase URL: {url}")
-logger.info(f"Supabase Key: {'*' * len(key) if key else 'Not Set'}")
+# # Log environment variables untuk debugging
+# logger.info(f"Supabase URL: {url}")
+# logger.info(f"Supabase Key: {'*' * len(key) if key else 'Not Set'}")
 
 app = FastAPI()
 
@@ -131,7 +131,7 @@ def get_tools():
     ]
     return tools
 
-# if __name__ == '__main__':
-#     app.run()
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+if __name__ == '__main__':
+    app.run()
+# if __name__ == "__main__":
+#     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
