@@ -6,26 +6,16 @@ from supabase import create_client, Client
 from jose import jwt
 import os
 from fastapi.middleware.cors import CORSMiddleware
-import traceback
-import logging
 
 # Inisialisasi Supabase
 url: str = os.getenv('SUPABASE_URL')
 key: str = os.getenv('SUPABASE_KEY')
 supabase: Client = create_client(url, key)
-# logging.basicConfig(level=logging.INFO)
-# logger = logging.getLogger(__name__)
-
-# # Log environment variables untuk debugging
-# logger.info(f"Supabase URL: {url}")
-# logger.info(f"Supabase Key: {'*' * len(key) if key else 'Not Set'}")
 
 app = FastAPI()
 
 # Konfigurasi OAuth
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-
-
 
 # Fungsi Verifikasi Token
 async def verify_token(token: str):
@@ -106,11 +96,7 @@ async def logout(token: str = Depends(oauth2_scheme)):
 
 @app.get("/")
 async def root():
-    try:
-        return {"message": "Hello from SmartGreen!"}
-    except Exception as e:
-        print(f"Error: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"message": "Hello from SmartGreen!"}
 
 
 
@@ -131,7 +117,7 @@ def get_tools():
     ]
     return tools
 
-if __name__ == '__main__':
-    app.run()
-# if __name__ == "__main__":
-#     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+# if __name__ == '__main__':
+#     app.run()
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
