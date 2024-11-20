@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from supabase import create_client, Client
 from jose import jwt
@@ -12,11 +13,21 @@ load_dotenv()
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 JWT_SECRET = os.getenv('JWT_SECRET')
+REDIRECT_URL = os.getenv('REDIRECT_URL', 'http://localhost:8000/callback')
 
 # Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -48,20 +59,58 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 @app.get("/login/google")
 async def login_google():
     """Redirect to Google OAuth via Supabase"""
-    # Supabase akan menangani redirect ke Google
-    auth_url = supabase.auth.get_oauth_url('google')
-    return {"auth_url": auth_url}
+    try:
+        # Gunakan metode baru untuk sign_in_with_oauth
+        auth_response = supabase.auth.sign_in_with_oauth({
+            'provider': 'google',
+            'options': {
+                'redirect_to': REDIRECT_URL
+            }
+        })
+        
+        return {
+            "auth_url": str(auth_response.url),
+            "status": "Silakan redirect ke URL ini"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/callback")
+async def oauth_callback(request: Request):
+    """Callback untuk OAuth"""
+    try:
+        # Ambil parameter dari query
+        code = request.query_params.get('code')
+        error = request.query_params.get('error')
+
+        if error:
+            return {"status": "error", "message": error}
+
+        if not code:
+            raise HTTPException(status_code=400, detail="Kode otorisasi tidak ditemukan")
+
+        # Proses pertukaran kode
+        response = supabase.auth.exchange_code_for_session(code)
+        
+        return {
+            "status": "success", 
+            "session": response.session.access_token if response.session else None,
+            "user": response.user.user_metadata if response.user else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/login")
 async def login(token: str):
     """Verifikasi token dari Supabase"""
     try:
         # Verifikasi token dari Supabase
-        user = supabase.auth.get_user(token)
+        response = supabase.auth.get_user(token)
+        user = response.user
         
         # Generate JWT untuk aplikasi Anda sendiri
         jwt_token = jwt.encode(
-            {"sub": user.user.id}, 
+            {"sub": user.id}, 
             JWT_SECRET, 
             algorithm='HS256'
         )
@@ -69,7 +118,7 @@ async def login(token: str):
         return {
             "access_token": jwt_token, 
             "token_type": "bearer",
-            "user": user.user.user_metadata
+            "user": user.user_metadata
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -95,6 +144,7 @@ async def get_tools(current_user: dict = Depends(get_current_user)):
     ]
     return tools
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+# Pastikan untuk menambahkan handler untuk deployment Vercel
+def handler(event, context):
+    import serverless_wsgi
+    return serverless_wsgi.handle_request(app, event, context)
