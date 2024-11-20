@@ -18,6 +18,7 @@ REDIRECT_URL = os.getenv('REDIRECT_URL', 'http://localhost:8000/callback')
 # Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Create FastAPI app
 app = FastAPI()
 
 # Add CORS middleware
@@ -144,7 +145,7 @@ async def get_tools(current_user: dict = Depends(get_current_user)):
     ]
     return tools
 
-# Pastikan untuk menambahkan handler untuk deployment Vercel
+# Vercel API Route Handler
 def handler(event, context):
     import serverless_wsgi
     return serverless_wsgi.handle_request(app, event, context)
