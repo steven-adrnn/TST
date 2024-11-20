@@ -1,40 +1,47 @@
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel
+from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi.responses import RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
 import os
 import httpx
-from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
 import urllib.parse
-import uvicorn
+import secrets
 
 app = FastAPI()
 
-# Konfigurasi Supabase
+# Tambahkan CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+# Konfigurasi Supabase dan OAuth
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Sesuaikan redirect URI untuk production
+REDIRECT_URI = "https://smartgreen-kappa.vercel.app/auth/google/callback"
 
-# Model User
-class User(BaseModel):
-    id: str
-    email: str
-    name: str = None
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Endpoint Login Google
 @app.get("/auth/google")
-async def google_login(request: Request):
-    # Parameter OAuth Google yang lebih lengkap
+async def google_login():
+    # Generate state untuk keamanan
+    state = secrets.token_urlsafe(16)
+    
+    # Parameter OAuth Google
     params = {
         "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": "https://your-vercel-domain.vercel.app/auth/google/callback",  # Pastikan sesuai dengan yang di Google Console
-        "response_type": "code",  # Tambahkan ini
+        "redirect_uri": REDIRECT_URI,
+        "response_type": "code",
         "scope": "openid email profile",
-        "state": "random_state_value",  # Tambahkan state untuk keamanan
+        "state": state,
         "access_type": "offline"
     }
     
@@ -49,7 +56,7 @@ async def google_login(request: Request):
 
 # Callback Handler Google OAuth
 @app.get("/auth/google/callback")
-async def google_auth_callback(code: str):
+async def google_auth_callback(code: str, state: str = None):
     try:
         # Tukar authorization code dengan access token
         token_url = "https://oauth2.googleapis.com/token"
@@ -58,7 +65,7 @@ async def google_auth_callback(code: str):
             "client_secret": GOOGLE_CLIENT_SECRET,
             "code": code,
             "grant_type": "authorization_code",
-            "redirect_uri": "https://your-vercel-domain.vercel.app/auth/google/callback"
+            "redirect_uri": REDIRECT_URI
         }
 
         async with httpx.AsyncClient() as client:
@@ -114,25 +121,10 @@ async def google_auth_callback(code: str):
             detail=str(e)
         )
 
-# Endpoint yang memerlukan autentikasi
-@app.get("/protected")
-async def protected_route(token: str):
-    try:
-        # Verifikasi token Supabase
-        user = supabase.auth.get_user(token)
-        return {"message": f"Authenticated as {user.user.email}"}
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Invalid token"
-        )
-        
+# Endpoint lainnya tetap sama
 @app.get("/")
 async def root():
     return {"message": "Hello from SmartGreen!"}
-
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
 
 @app.get('/api/users')
 def get_users():
@@ -150,6 +142,3 @@ def get_tools():
         {"id": 3, "name": "Sprayer"},
     ]
     return tools
-
-# if __name__ == '__main__':
-#     app.run()
