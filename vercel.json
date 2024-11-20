@@ -8,15 +8,8 @@
   ],
   "routes": [
     {
-      "src" : "/(.*)",
-      "dest" : "main.py"
+      "src": "/(.*)",
+      "dest": "main.py"
     }
-  ],
-  "env": {
-    "SUPABASE_URL": "@supabase_url",
-    "SUPABASE_KEY": "@supabase_key",
-    "SECRET_KEY": "@secret_key",
-    "GOOGLE_CLIENT_ID": "@google_client_id",
-    "GOOGLE_CLIENT_SECRET": "@google_client_secret"
-  }
+  ]
 }
