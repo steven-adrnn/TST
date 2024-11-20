@@ -1,10 +1,12 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from supabase import create_client, Client
+import os
+import uvicorn
 
 # Inisialisasi Supabase
-url: str = "SUPABASE_URL"
-key: str = "SUPABASE_KEY"
+url: str = os.getenv("SUPABASE_URL")
+key: str = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
 app = FastAPI()
