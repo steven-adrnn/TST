@@ -24,7 +24,6 @@ supabase: Client = create_client(supabase_url, supabase_key)
 
 # Configuration
 FRONTEND_URL = "https://smartgreen-kappa.vercel.app"
-BACKEND_URL = "https://smartgreen-kappa.vercel.app"  # Update if your backend URL is different
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
@@ -45,117 +44,101 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+@app.get("/auth/login/google")
+async def login_google():
     try:
-        token = credentials.credentials
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid authentication token")
-        return user_id
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid authentication token")
-
-@app.get("/auth/login/{provider}")
-async def login(provider: str, request: Request):
-    # Construct the OAuth URL with all necessary parameters
-    params = {
-        "provider": provider,
-        "redirect_to": f"{BACKEND_URL}/auth/callback",
-        "scopes": "email",  # Add any additional scopes you need
-    }
-    
-    auth_url = f"{supabase_url}/auth/v1/authorize?{urlencode(params)}"
-    return RedirectResponse(url=auth_url)
+        query_params = {
+            "provider": "google",
+            "redirect_to": f"{FRONTEND_URL}/auth/callback"
+        }
+        
+        auth_url = f"{supabase_url}/auth/v1/authorize?{urlencode(query_params)}"
+        print(f"Redirecting to: {auth_url}")  # Debug log
+        return RedirectResponse(url=auth_url)
+    except Exception as e:
+        print(f"Error in login: {str(e)}")  # Debug log
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Login error: {str(e)}"}
+        )
 
 @app.get("/auth/callback")
-async def callback(
-    request: Request,
-    code: Optional[str] = None,
-    error: Optional[str] = None,
-    error_description: Optional[str] = None
-):
-    # Handle OAuth error
-    if error:
-        return JSONResponse(
-            status_code=400,
-            content={
-                "error": error,
-                "error_description": error_description
-            }
-        )
-
-    # Handle missing code
-    if not code:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "Missing authorization code"}
-        )
-    
+async def callback(request: Request):
     try:
-        # Exchange token with Supabase
-        async with httpx.AsyncClient() as client:
-            token_params = {
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": f"{BACKEND_URL}/auth/callback",
-            }
-            
-            response = await client.post(
-                f"{supabase_url}/auth/v1/token?grant_type=authorization_code",
-                json=token_params,
-                headers={
-                    "apikey": supabase_key,
-                    "Content-Type": "application/json"
+        # Get all query parameters
+        params = dict(request.query_params)
+        print(f"Callback params: {params}")  # Debug log
+
+        # Check for error in the callback
+        if "error" in params:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": params.get("error"),
+                    "error_description": params.get("error_description")
                 }
             )
 
-            print(f"Supabase Response: {response.status_code}")  # Debug log
-            print(f"Response Content: {response.text}")  # Debug log
-
-        if response.status_code != 200:
+        # Get the code from query parameters
+        code = params.get("code")
+        if not code:
             return JSONResponse(
                 status_code=400,
-                content={"error": f"Failed to exchange code for token: {response.text}"}
+                content={"error": "Missing authorization code"}
             )
 
-        data = response.json()
-        
-        # Get user data from response
-        access_token = data.get("access_token")
-        refresh_token = data.get("refresh_token")
-        user = data.get("user", {})
-        user_id = user.get("id")
+        # Exchange the code for a token using Supabase client
+        try:
+            # Get session data from Supabase
+            data = supabase.auth.exchange_code_for_session({
+                "auth_code": code
+            })
+            
+            print(f"Supabase auth response: {data}")  # Debug log
 
-        if not user_id or not access_token:
+            # Extract user information
+            session = data.session
+            user = session.user
+            
+            if not user or not user.id:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "Failed to get user information"}
+                )
+
+            # Create our JWT token
+            access_token = create_access_token({"sub": user.id})
+            
+            # Redirect to frontend with token
+            params = {
+                "access_token": access_token,
+                "refresh_token": session.refresh_token,
+                "provider": "google"
+            }
+            
+            redirect_url = f"{FRONTEND_URL}/callback.html#{urlencode(params)}"
+            print(f"Redirecting to: {redirect_url}")  # Debug log
+            return RedirectResponse(url=redirect_url)
+
+        except Exception as e:
+            print(f"Error exchanging code: {str(e)}")  # Debug log
             return JSONResponse(
                 status_code=400,
-                content={"error": "Invalid token response"}
+                content={"error": f"Failed to exchange code: {str(e)}"}
             )
-
-        # Create our own JWT token
-        jwt_token = create_access_token({"sub": user_id})
-        
-        # Redirect to frontend with all tokens
-        params = {
-            "access_token": jwt_token,
-            "supabase_token": access_token,
-            "refresh_token": refresh_token
-        }
-        
-        redirect_url = f"{FRONTEND_URL}/callback.html#{urlencode(params)}"
-        return RedirectResponse(url=redirect_url)
 
     except Exception as e:
-        print(f"Error in callback: {str(e)}")  # Debug log
+        print(f"Callback error: {str(e)}")  # Debug log
         return JSONResponse(
             status_code=500,
-            content={"error": f"Internal server error: {str(e)}"}
+            content={"error": f"Callback error: {str(e)}"}
         )
 
 @app.get("/")
 async def root():
     return {"message": "Hello from SmartGreen!"}
+
+# ... rest of your endpoints remain the same ...
 
 @app.get('/api/users')
 def get_users(current_user: str = Depends(get_current_user)):

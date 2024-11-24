@@ -5,49 +5,71 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Authentication Callback</title>
     <script>
+        function parseHash() {
+            const hash = window.location.hash.substring(1);
+            const params = {};
+            hash.split('&').forEach(param => {
+                const [key, value] = param.split('=');
+                params[key] = decodeURIComponent(value);
+            });
+            return params;
+        }
+
+        function parseQuery() {
+            const search = window.location.search.substring(1);
+            const params = {};
+            search.split('&').forEach(param => {
+                const [key, value] = param.split('=');
+                params[key] = decodeURIComponent(value);
+            });
+            return params;
+        }
+
         window.onload = function() {
             try {
-                // Get the URL fragment
-                const hash = window.location.hash.substr(1);
-                const params = new URLSearchParams(hash);
-
-                // Extract all tokens
-                const accessToken = params.get("access_token");
-                const supabaseToken = params.get("supabase_token");
-                const refreshToken = params.get("refresh_token");
-
-                if (accessToken && supabaseToken) {
-                    // Store tokens
-                    localStorage.setItem("jwt_token", accessToken);
-                    localStorage.setItem("supabase_token", supabaseToken);
-                    if (refreshToken) {
-                        localStorage.setItem("refresh_token", refreshToken);
-                    }
-
-                    // Log success (remove in production)
-                    console.log("Authentication successful");
-                    console.log("JWT Token:", accessToken);
-                    console.log("Supabase Token:", supabaseToken);
-
-                    // Redirect to main application
-                    window.location.href = "/";
-                } else {
-                    // Handle missing tokens
-                    console.error("Authentication failed: Missing tokens");
-                    document.getElementById("status").textContent = "Authentication failed: Missing tokens";
+                // Check for error in URL parameters
+                const queryParams = parseQuery();
+                if (queryParams.error) {
+                    throw new Error(`Authentication error: ${queryParams.error}`);
                 }
+
+                // Get tokens from hash
+                const hashParams = parseHash();
+                console.log("Hash params:", hashParams); // Debug log
+
+                const accessToken = hashParams.access_token;
+                const refreshToken = hashParams.refresh_token;
+
+                if (!accessToken) {
+                    throw new Error('No access token received');
+                }
+
+                // Store tokens
+                localStorage.setItem('access_token', accessToken);
+                if (refreshToken) {
+                    localStorage.setItem('refresh_token', refreshToken);
+                }
+
+                // Update status
+                document.getElementById('status').textContent = 'Authentication successful!';
+
+                // Redirect to home page after a short delay
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1000);
+
             } catch (error) {
-                // Handle any errors
-                console.error("Authentication error:", error);
-                document.getElementById("status").textContent = "Authentication error: " + error.message;
+                console.error('Authentication error:', error);
+                document.getElementById('status').textContent = `Authentication failed: ${error.message}`;
+                document.getElementById('status').style.color = 'red';
             }
         };
     </script>
 </head>
 <body>
-    <div style="text-align: center; padding: 20px;">
-        <h1>Processing Authentication...</h1>
-        <p id="status">Please wait while we complete the authentication process.</p>
+    <div style="text-align: center; padding: 20px; font-family: Arial, sans-serif;">
+        <h1>Authentication Process</h1>
+        <p id="status">Processing authentication...</p>
     </div>
 </body>
 </html>
