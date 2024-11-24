@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Callback</title>
+    <script>
+        window.onload = function() {
+            // Get the URL fragment
+            const hash = window.location.hash.substr(1); // Remove the `#`
+            const params = new URLSearchParams(hash);
+
+            // Extract the tokens
+            const accessToken = params.get("access_token");
+            const refreshToken = params.get("refresh_token");
+
+            if (accessToken) {
+                console.log("Access Token:", accessToken);
+                // You can now use the access token to make API calls
+                // For example, you could store it in local storage
+                localStorage.setItem("access_token", accessToken);
+                localStorage.setItem("refresh_token", refreshToken);
+                // Redirect to your main application page or show a success message
+                window.location.href = "/"; // Redirect to home page
+            } else {
+                console.error("No access token found.");
+                // Handle error case
+            }
+        };
+    </script>
+</head>
+<body>
+    <h1>Processing Login...</h1>
+</body>
+</html>
