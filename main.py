@@ -1,13 +1,14 @@
 import os
 import httpx
 from fastapi import FastAPI, Request, Depends, HTTPException
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from supabase import create_client, Client
 from dotenv import load_dotenv
+from typing import Optional
 
 # Load environment variables
 load_dotenv()
@@ -28,7 +29,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change this to your frontend URL in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -57,35 +58,59 @@ async def login(provider: str):
     url = f"{supabase_url}/auth/v1/authorize?provider={provider}&redirect_to=https://smartgreen-kappa.vercel.app/auth/callback"
     return RedirectResponse(url)
 
-@app.get("/auth/callback", response_class=HTMLResponse)
-async def callback(request: Request):
-    code = request.query_params.get("code")
+@app.get("/auth/callback")
+async def callback(request: Request, code: Optional[str] = None):
     if not code:
-        return {"error": "Missing authorization code"}
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Missing authorization code"}
+        )
     
-    # Exchange token with Supabase
-    async with httpx.AsyncClient() as client:
-        response = await client.post(f"{supabase_url}/auth/v1/token", json={
-            "provider": "oauth",
-            "code": code,
-            "redirect_to": "https://smartgreen-kappa.vercel.app/auth/callback"
-        })
+    try:
+        # Exchange token with Supabase
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{supabase_url}/auth/v1/token",
+                json={
+                    "provider": "oauth",
+                    "code": code,
+                    "redirect_to": "https://smartgreen-kappa.vercel.app/auth/callback"
+                },
+                headers={
+                    "apikey": supabase_key,
+                    "Content-Type": "application/json"
+                }
+            )
 
-    if response.status_code != 200:
-        return {"error": "Failed to exchange code for token"}
+        if response.status_code != 200:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Failed to exchange code for token: {response.text}"}
+            )
 
-    data = response.json()
-    user_id = data.get("user", {}).get("id")
-    
-    if not user_id:
-        return {"error": "User ID not found in token response"}
+        data = response.json()
+        user_id = data.get("user", {}).get("id")
+        
+        if not user_id:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "User ID not found in token response"}
+            )
 
-    # Create JWT token
-    access_token = create_access_token({"sub": user_id})
-    
-    # Redirect to frontend with token
-    response_redirect = RedirectResponse(url=f"/?token={access_token}")
-    return response_redirect
+        # Create JWT token
+        access_token = create_access_token({"sub": user_id})
+        
+        # Redirect to frontend with token
+        frontend_url = "https://smartgreen-kappa.vercel.app"
+        redirect_url = f"{frontend_url}?token={access_token}"
+        
+        return RedirectResponse(url=redirect_url)
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Internal server error: {str(e)}"}
+        )
 
 @app.get("/")
 async def root():
