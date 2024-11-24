@@ -1,11 +1,11 @@
 import os
-import httpx  # Pastikan Anda menginstal httpx
+import httpx
 from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi_sessions import SessionMiddleware, get_session
-from fastapi_sessions.frontends.implementations.itsdangerous import ItsDangerousBackend
-from fastapi_sessions.session import Session
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -13,11 +13,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
+security = HTTPBearer()
 
 # Supabase client setup
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(supabase_url, supabase_key)
+
+# JWT Configuration
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # CORS middleware
 app.add_middleware(
@@ -28,16 +34,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Session setup
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
-backend = ItsDangerousBackend(secret=SECRET_KEY, lifetime_seconds=3600)
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
-# Dependency to get current user from session
-async def get_current_user(session: Session = Depends(get_session)):
-    if "user_id" not in session:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return session["user_id"]
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
+        return user_id
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid authentication token")
 
 @app.get("/auth/login/{provider}")
 async def login(provider: str):
@@ -50,7 +63,7 @@ async def callback(request: Request):
     if not code:
         return {"error": "Missing authorization code"}
     
-    # Melakukan pertukaran token dengan Supabase
+    # Exchange token with Supabase
     async with httpx.AsyncClient() as client:
         response = await client.post(f"{supabase_url}/auth/v1/token", json={
             "provider": "oauth",
@@ -58,38 +71,36 @@ async def callback(request: Request):
             "redirect_to": "https://smartgreen-kappa.vercel.app/auth/callback"
         })
 
-    # Cek apakah permintaan berhasil
     if response.status_code != 200:
         return {"error": "Failed to exchange code for token"}
 
     data = response.json()
-
-    # Ambil user_id dari data yang diterima
     user_id = data.get("user", {}).get("id")
+    
     if not user_id:
-        return {"error": "User  ID not found in token response"}
+        return {"error": "User ID not found in token response"}
 
-    # Simpan user_id dalam session
-    session = request.session
-    session["user_id"] = user_id
-
-    response_redirect = RedirectResponse(url="/")
+    # Create JWT token
+    access_token = create_access_token({"sub": user_id})
+    
+    # Redirect to frontend with token
+    response_redirect = RedirectResponse(url=f"/?token={access_token}")
     return response_redirect
 
 @app.get("/")
 async def root():
     return {"message": "Hello from SmartGreen!"}
 
-@app.get('/api/users', dependencies=[Depends(get_current_user)])
-def get_users():
+@app.get('/api/users')
+def get_users(current_user: str = Depends(get_current_user)):
     users = [
         {"id": 1, "name": "John Doe"},
         {"id": 2, "name": "Jane Smith"},
     ]
     return users
 
-@app.get('/api/tools', dependencies=[Depends(get_current_user)])
-def get_tools():
+@app.get('/api/tools')
+def get_tools(current_user: str = Depends(get_current_user)):
     tools = [
         {"id": 1, "name": "Cangkul"},
         {"id": 2, "name": "Pupuk"},
@@ -98,9 +109,5 @@ def get_tools():
     return tools
 
 @app.post("/auth/logout")
-async def logout(session: Session = Depends(get_session)):
-    session.clear()  # Clear the session
+async def logout():
     return RedirectResponse(url="/")
-
-# if __name__ == "__main__":
-#     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
