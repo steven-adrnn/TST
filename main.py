@@ -1,10 +1,34 @@
 import uvicorn
-from fastapi import FastAPI
+import os
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
+load_dotenv()
 app = FastAPI()
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_key = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(supabase_url, supabase_key)
+
+
+@app.get("/auth/login/{provider}")
+async def login(provider: str):
+    # Generate the login URL for Google or GitHub
+    url = f"{supabase_url}/auth/v1/authorize?provider={provider}&redirect_to=https://your-vercel-app.vercel.app/auth/callback"
+    return RedirectResponse(url)
+
+@app.get("/auth/callback")
+async def callback(request: Request):
+    code = request.query_params.get("code")
+    if not code:
+        return {"error": "Missing authorization code"}
+    # Here, you would handle token exchange if needed
+    return {"message": "Login successful!"}
 
 @app.get("/")
 async def root():
+    
     return {"message": "Hello from SmartGreen!"}
 
 if __name__ == "__main__":
