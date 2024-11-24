@@ -25,7 +25,7 @@ app.add_middleware(
 @app.get("/auth/login/{provider}")
 async def login(provider: str):
     # Generate the login URL for Google or GitHub
-    url = f"{supabase_url}/auth/v1/authorize?provider={provider}&redirect_to=http://smartgreen-kappa.vercel.app/auth/callback"
+    url = f"{supabase_url}/auth/v1/authorize?provider={provider}&redirect_to=https://smartgreen-kappa.vercel.app/auth/callback"
     return RedirectResponse(url)
 
 @app.get("/auth/callback", response_class=HTMLResponse)
