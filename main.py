@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from typing import Optional
+from urllib.parse import urlencode
 
 # Load environment variables
 load_dotenv()
@@ -21,7 +22,9 @@ supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(supabase_url, supabase_key)
 
-# JWT Configuration
+# Configuration
+FRONTEND_URL = "https://smartgreen-kappa.vercel.app"
+BACKEND_URL = "https://smartgreen-kappa.vercel.app"  # Update if your backend URL is different
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
@@ -54,12 +57,35 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Invalid authentication token")
 
 @app.get("/auth/login/{provider}")
-async def login(provider: str):
-    url = f"{supabase_url}/auth/v1/authorize?provider={provider}&redirect_to=https://smartgreen-kappa.vercel.app/auth/callback"
-    return RedirectResponse(url)
+async def login(provider: str, request: Request):
+    # Construct the OAuth URL with all necessary parameters
+    params = {
+        "provider": provider,
+        "redirect_to": f"{BACKEND_URL}/auth/callback",
+        "scopes": "email",  # Add any additional scopes you need
+    }
+    
+    auth_url = f"{supabase_url}/auth/v1/authorize?{urlencode(params)}"
+    return RedirectResponse(url=auth_url)
 
 @app.get("/auth/callback")
-async def callback(request: Request, code: Optional[str] = None):
+async def callback(
+    request: Request,
+    code: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None
+):
+    # Handle OAuth error
+    if error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": error,
+                "error_description": error_description
+            }
+        )
+
+    # Handle missing code
     if not code:
         return JSONResponse(
             status_code=400,
@@ -69,18 +95,23 @@ async def callback(request: Request, code: Optional[str] = None):
     try:
         # Exchange token with Supabase
         async with httpx.AsyncClient() as client:
+            token_params = {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": f"{BACKEND_URL}/auth/callback",
+            }
+            
             response = await client.post(
-                f"{supabase_url}/auth/v1/token",
-                json={
-                    "provider": "oauth",
-                    "code": code,
-                    "redirect_to": "https://smartgreen-kappa.vercel.app/auth/callback"
-                },
+                f"{supabase_url}/auth/v1/token?grant_type=authorization_code",
+                json=token_params,
                 headers={
                     "apikey": supabase_key,
                     "Content-Type": "application/json"
                 }
             )
+
+            print(f"Supabase Response: {response.status_code}")  # Debug log
+            print(f"Response Content: {response.text}")  # Debug log
 
         if response.status_code != 200:
             return JSONResponse(
@@ -89,24 +120,34 @@ async def callback(request: Request, code: Optional[str] = None):
             )
 
         data = response.json()
-        user_id = data.get("user", {}).get("id")
         
-        if not user_id:
+        # Get user data from response
+        access_token = data.get("access_token")
+        refresh_token = data.get("refresh_token")
+        user = data.get("user", {})
+        user_id = user.get("id")
+
+        if not user_id or not access_token:
             return JSONResponse(
                 status_code=400,
-                content={"error": "User ID not found in token response"}
+                content={"error": "Invalid token response"}
             )
 
-        # Create JWT token
-        access_token = create_access_token({"sub": user_id})
+        # Create our own JWT token
+        jwt_token = create_access_token({"sub": user_id})
         
-        # Redirect to frontend with token
-        frontend_url = "https://smartgreen-kappa.vercel.app"
-        redirect_url = f"{frontend_url}?token={access_token}"
+        # Redirect to frontend with all tokens
+        params = {
+            "access_token": jwt_token,
+            "supabase_token": access_token,
+            "refresh_token": refresh_token
+        }
         
+        redirect_url = f"{FRONTEND_URL}/callback.html#{urlencode(params)}"
         return RedirectResponse(url=redirect_url)
 
     except Exception as e:
+        print(f"Error in callback: {str(e)}")  # Debug log
         return JSONResponse(
             status_code=500,
             content={"error": f"Internal server error: {str(e)}"}
