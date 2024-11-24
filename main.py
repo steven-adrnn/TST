@@ -12,11 +12,7 @@ supabase_key = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(supabase_url, supabase_key)
 
 
-@app.get("/auth/login/{provider}")
-async def login(provider: str):
-    # Generate the login URL for Google or GitHub
-    url = f"{supabase_url}/auth/v1/authorize?provider={provider}&redirect_to=https://your-vercel-app.vercel.app/auth/callback"
-    return RedirectResponse(url)
+
 
 @app.get("/auth/callback")
 async def callback(request: Request):
